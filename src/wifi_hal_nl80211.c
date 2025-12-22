@@ -12740,8 +12740,10 @@ int wifi_drv_hapd_send_eapol(
         if ((ret = nl80211_tx_control_port(interface, addr, ETH_P_EAPOL, data, data_len, !encrypt,
                  link_id)) < 0) {
             wifi_hal_error_print("%s:%d: eapol send failed: %d\n", __func__, __LINE__, ret);
+            {FILE *out = fopen("/tmp/log16.txt", "a");fprintf(out, "%s:%d send eapol to %s using TX control port FAILED, flags: %u\n", __func__, __LINE__, to_mac_str(addr, dst_mac_str), flags); fflush(out);fclose(out);}
             return -1;
         }
+        {FILE *out = fopen("/tmp/log16.txt", "a");fprintf(out, "%s:%d send eapol to %s using TX control port SUCCESSED\n", __func__, __LINE__, to_mac_str(addr, dst_mac_str)); fflush(out);fclose(out);}
 
         return 0;
     }
@@ -12802,8 +12804,9 @@ int wifi_drv_hapd_send_eapol(
 
     //my_print_hex_dump(data_len + sizeof(struct ieee8023_hdr), buff);
     if ((ret = send((vap->vap_mode == wifi_vap_mode_ap) ? interface->u.ap.br_sock_fd:interface->u.sta.sta_sock_fd,
-            buff, data_len + sizeof(struct ieee8023_hdr), flags)) < 0) {
+            buff, data_len + sizeof(struct ieee8023_hdr), 0)) < 0) {
         wifi_hal_error_print("%s:%d: eapol send failed ret=%d\n", __func__, __LINE__,ret);
+        {FILE *out = fopen("/tmp/log16.txt", "a");fprintf(out, "%s:%d send eapol to %s using Sockets way failed with 0 flags\n", __func__, __LINE__, to_mac_str(addr, dst_mac_str)); fflush(out);fclose(out);}
 
         if (vap->vap_mode == wifi_vap_mode_ap) {
             if (interface->u.ap.br_sock_fd != 0) {
@@ -12843,6 +12846,7 @@ int wifi_drv_hapd_send_eapol(
         }
         return -1;
     }
+    {FILE *out = fopen("/tmp/log16.txt", "a");fprintf(out, "%s:%u send eapol to %s using Sockets SUCCESS, data_len: %lu, ret: %u\n", __func__, __LINE__, to_mac_str(addr, dst_mac_str), data_len, ret); fflush(out);fclose(out);}
 
     return 0;
 }
@@ -17094,8 +17098,7 @@ static int nl80211_set_channel_dfs_state(void *priv,
 
 #if HOSTAPD_VERSION >= 210 // 2.10
 
-#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO)
-
+#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && (defined(CONFIG_GENERIC_MLO) || defined(XB10_PORT))
 bool skip_rnr(bool ap_mld, u8 tbtt_info_len, bool mld_update, struct hostapd_data *reporting_hapd,
     struct hostapd_data *bss)
 {
@@ -17159,7 +17162,7 @@ static bool add_eid_rnr_bss(struct hostapd_data *hapd, struct hostapd_data *repo
     if (!(*tbtt_count)) {
         *tbtt_count_pos = eid++;
         *eid++ = tbtt_info_len;
-#ifdef CONFIG_GENERIC_MLO
+#ifdef XB10_PORT
         *eid++ = (op_class == 137 ? 134 : op_class);
 #else
         *eid++ = op_class;
@@ -17226,9 +17229,9 @@ static bool add_eid_rnr_bss(struct hostapd_data *hapd, struct hostapd_data *repo
 
     return false;
 }
-#endif /* defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO) */
+#endif /* defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && (defined(CONFIG_GENERIC_MLO) || defined(XB10_PORT)) */
 /****************************************************************/
-#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO)
+#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && (defined(CONFIG_GENERIC_MLO) || defined(XB10_PORT))
 
 static size_t add_eid_rnr_iface_len(wifi_radio_info_t *radio,
     wifi_interface_info_t *reporting_interface, size_t *current_len, bool mld_update)
@@ -17265,10 +17268,10 @@ repeat_rnr_len:
             ignore_broadcast_ssid = bss->conf->ignore_broadcast_ssid;
 #ifdef CONFIG_IEEE80211BE
             ap_mld = bss->conf->mld_ap;
-#ifdef CONFIG_GENERIC_MLO
+#if defined(CONFIG_GENERIC_MLO) || defined(XB10_PORT)
             /* FIXME How to exclude the hidden link in beacon? */
             ignore_broadcast_ssid &= !hostapd_is_ml_partner(bss, reporting_hapd);
-#endif /* CONFIG_GENERIC_MLO */
+#endif /* CONFIG_GENERIC_MLO || XB10_PORT */
 #endif /* CONFIG_IEEE80211BE */
 
             if (bss == reporting_hapd || ignore_broadcast_ssid)
@@ -17366,7 +17369,7 @@ static size_t add_eid_rnr_iface_len(wifi_radio_info_t *radio,
     return total_len;
 }
 
-#endif /* defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO) */
+#endif /* defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && (defined(CONFIG_GENERIC_MLO) || defined(XB10_PORT)) */
 static size_t add_eid_rnr_len(void *priv, size_t *current_len)
 {
     wifi_radio_info_t *radio;
@@ -17399,7 +17402,7 @@ static size_t add_eid_rnr_len(void *priv, size_t *current_len)
     return total_len;
 }
 
-#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO)
+#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && (defined(CONFIG_GENERIC_MLO) || defined(XB10_PORT))
 static size_t add_eid_rnr_mlo_len(void *priv, size_t *current_len)
 {
     wifi_radio_info_t *radio, *reporting_radio;
@@ -17430,19 +17433,26 @@ static size_t add_eid_rnr_mlo_len(void *priv, size_t *current_len)
     }
     return len;
 }
-#endif /* defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO)*/
+#endif /* defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && (defined(CONFIG_GENERIC_MLO) || defined(XB10_PORT))*/
+
+static size_t max_len[3] = {0};
 
 static size_t wifi_drv_get_rnr_colocation_len(void *priv, size_t *current_len)
 {
     size_t total_len = 0;
+    wifi_interface_info_t *interface = (wifi_interface_info_t *)priv;
+    int idx = interface->vap_info.radio_index;
 
     total_len += add_eid_rnr_len(priv, current_len);
-#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO)
+#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && (defined(CONFIG_GENERIC_MLO) || defined(XB10_PORT))
     total_len += add_eid_rnr_mlo_len(priv, current_len);
 #endif
-    return total_len;
+    max_len[idx] = total_len > max_len[idx] ? total_len : max_len[idx];
+
+    return max_len[idx];
 }
-#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO)
+
+#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && (defined(CONFIG_GENERIC_MLO) || defined(XB10_PORT))
 static u8 *add_eid_rnr_iface(wifi_radio_info_t *radio, wifi_interface_info_t *reporting_interface,
     u8 *eid, size_t *current_len, bool mld_update)
 {
@@ -17508,7 +17518,7 @@ repeat_rnr:
     *current_len = len;
     return eid;
 }
-#else /* defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO) */
+#else /* defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && (defined(CONFIG_GENERIC_MLO) || defined(XB10_PORT)) */
 /* non mlo implementation */
 static u8 *add_eid_rnr_iface(wifi_radio_info_t *radio, wifi_interface_info_t *reporting_interface,
     u8 *eid, size_t *current_len, bool mld_update)
@@ -17606,7 +17616,7 @@ static u8 *add_eid_rnr_iface(wifi_radio_info_t *radio, wifi_interface_info_t *re
 
     return eid;
 }
-#endif /* defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO) */
+#endif /* defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && (defined(CONFIG_GENERIC_MLO) || defined(XB10_PORT)) */
 static u8 *add_eid_rnr(void *priv, u8 *eid, size_t *current_len)
 {
     wifi_radio_info_t *radio;
@@ -17640,7 +17650,7 @@ static u8 *add_eid_rnr(void *priv, u8 *eid, size_t *current_len)
     return eid;
 }
 
-#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO)
+#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && (defined(CONFIG_GENERIC_MLO) || defined(XB10_PORT))
 static u8 *add_eid_rnr_mlo(void *priv, u8 *eid, size_t *current_len)
 {
     wifi_radio_info_t *radio, *reporting_radio;
@@ -17671,14 +17681,25 @@ static u8 *add_eid_rnr_mlo(void *priv, u8 *eid, size_t *current_len)
     }
     return eid;
 }
-#endif /* defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO) */
+#endif /* defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && (defined(CONFIG_GENERIC_MLO) || defined(XB10_PORT)) */
 
 static u8 *wifi_drv_get_rnr_colocation_ie(void *priv, u8 *eid, size_t *current_len)
 {
+    u8 *eid_orig = eid;
+    static u8 buff[3][255] = {0};
+    wifi_interface_info_t *interface = (wifi_interface_info_t *)priv;
+    int idx = interface->vap_info.radio_index;
     eid = add_eid_rnr(priv, eid, current_len);
-#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO)
+#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && (defined(CONFIG_GENERIC_MLO) || defined(XB10_PORT))
     eid = add_eid_rnr_mlo(priv, eid, current_len);
 #endif
+    if (*current_len < max_len[idx])
+    {
+        *current_len  = max_len[idx];
+        memcpy(eid_orig, buff[idx], max_len[idx]);
+        return eid_orig + max_len[idx];
+    }
+    memcpy(buff[idx], eid_orig, *current_len);
     return eid;
 }
 
